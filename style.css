@@ -1,0 +1,58 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    background: black;
+    touch-action: none;
+}
+canvas {
+    display: block;
+}
+
+/* Controls Overlay */
+.controls {
+    position: fixed;
+    bottom: 10px;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+}
+
+/* Joystick Container */
+#joystick-container {
+    position: absolute;
+    left: 20px;
+    bottom: 20px;
+    width: 120px;
+    height: 120px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: all;
+}
+
+/* Joystick */
+#joystick {
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 50%;
+    position: relative;
+}
+
+/* Fire Button */
+#fireButton {
+    position: absolute;
+    right: 20px;
+    bottom: 20px;
+    font-size: 24px;
+    padding: 20px 25px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: none;
+    pointer-events: all;
+}
