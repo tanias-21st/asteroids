@@ -1,0 +1,35 @@
+name: Neon Build & Lint
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          pip install pygame flake8
+
+      - name: Run Linter
+        run: |
+          flake8 src/*.py
+
+      - name: Create Release ZIP
+        run: |
+          zip -r neon_build.zip src assets Makefile README.md
+
+      - name: Upload ZIP Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: neon-build
+          path: neon_build.zip
