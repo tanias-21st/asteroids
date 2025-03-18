@@ -1,4 +1,4 @@
-# ship.py
+# src/ship.py
 
 import pygame
 import math
@@ -22,12 +22,16 @@ class Ship:
         self.wrap_around()
 
     def draw(self, surface):
+        # Neon Ship Polygon (Magenta + Cyan glow)
         points = []
         for offset in [(0, -20), (10, 10), (-10, 10)]:
             x = self.position.x + math.sin(math.radians(self.angle)) * offset[0] + math.cos(math.radians(self.angle)) * offset[1]
             y = self.position.y - math.cos(math.radians(self.angle)) * offset[0] + math.sin(math.radians(self.angle)) * offset[1]
             points.append((x, y))
-        pygame.draw.polygon(surface, (255, 255, 255), points, 2)
+
+        # Glow layer
+        pygame.draw.polygon(surface, (0, 255, 255, 50), points, 6)  # Cyan outer glow
+        pygame.draw.polygon(surface, (255, 0, 255), points, 2)      # Magenta core
 
     def wrap_around(self):
         if self.position.x > self.width: self.position.x = 0
