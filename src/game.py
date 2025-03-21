@@ -1,5 +1,3 @@
-# game.py
-
 import pygame
 from ship import Ship
 from asteroid import Asteroid
@@ -10,13 +8,17 @@ class Game:
         self.width = width
         self.height = height
         self.ship = Ship(width, height)
-        self.asteroids = [Asteroid(width, height) for _ in range(5)]
         self.bullets = []
         self.score = 0
+        self.level = 1
         self.game_over = False
         self.font = pygame.font.SysFont("Arial", 24)
         self.shoot_sound = pygame.mixer.Sound("assets/sounds/shoot.wav")
         self.explode_sound = pygame.mixer.Sound("assets/sounds/explode.wav")
+        self.spawn_asteroids()
+
+    def spawn_asteroids(self):
+        self.asteroids = [Asteroid(self.width, self.height) for _ in range(4 + self.level)]
 
     def reset(self):
         self.__init__(self.width, self.height)
@@ -55,16 +57,31 @@ class Game:
             if self.ship.position.distance_to(asteroid.position) < asteroid.size * 10:
                 self.game_over = True
 
+        if not self.asteroids and not self.game_over:
+            self.level += 1
+            self.spawn_asteroids()
+
     def draw(self, surface):
         self.ship.draw(surface)
         for asteroid in self.asteroids:
             asteroid.draw(surface)
         for bullet in self.bullets:
             bullet.draw(surface)
-        score_text = self.font.render(f"Score: {self.score}", True, (255, 255, 255))
-        surface.blit(score_text, (10, 10))
+        self.draw_hud(surface)
         if self.game_over:
             self.show_game_over(surface)
+
+    def draw_hud(self, surface):
+        # "Score" label in red
+        label = self.font.render("Score:", True, (255, 0, 0))
+        surface.blit(label, (self.width - label.get_width() - 100, 10))
+        # Points value in white
+        points = self.font.render(f"{self.score}", True, (255, 255, 255))
+        surface.blit(points, (self.width - points.get_width() - 10, 10))
+
+        # Optional: Level indicator in cyan below score
+        level_text = self.font.render(f"Level: {self.level}", True, (0, 255, 255))
+        surface.blit(level_text, (self.width - level_text.get_width() - 10, 40))
 
     def show_game_over(self, surface):
         text = self.font.render("GAME OVER - Press R to Restart", True, (255, 0, 0))
