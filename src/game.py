@@ -72,14 +72,10 @@ class Game:
             self.show_game_over(surface)
 
     def draw_hud(self, surface):
-        # "Score" label in red
         label = self.font.render("Score:", True, (255, 0, 0))
         surface.blit(label, (self.width - label.get_width() - 100, 10))
-        # Points value in white
         points = self.font.render(f"{self.score}", True, (255, 255, 255))
         surface.blit(points, (self.width - points.get_width() - 10, 10))
-
-        # Optional: Level indicator in cyan below score
         level_text = self.font.render(f"Level: {self.level}", True, (0, 255, 255))
         surface.blit(level_text, (self.width - level_text.get_width() - 10, 40))
 
