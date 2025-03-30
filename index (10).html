@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asteroids Mobile</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: black;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+        }
+        .controls {
+            position: fixed;
+            bottom: 10px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+        #joystick-container {
+            position: absolute;
+            left: 20px;
+            bottom: 20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            pointer-events: all;
+        }
+        #joystick {
+            width: 60px;
+            height: 60px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            position: relative;
+        }
+        #fireButton {
+            position: absolute;
+            right: 20px;
+            bottom: 20px;
+            font-size: 24px;
+            padding: 20px 25px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: none;
+            pointer-events: all;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="controls">
+        <div id="joystick-container">
+            <div id="joystick"></div>
+        </div>
+        <button id="fireButton">🔥</button>
+    </div>
+
+    <script>
+    window.onload = function() {
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        let bullets = [], particles = [], asteroids = [], explosions = [];
+        let lives = 3, fadeAlpha = 0;
+        let gameStarted = false, gameOver = false, demoMode = false;
+        let countdownTimer = 600; // 10 seconds
+        const playAgainRect = { x: canvas.width / 2 - 100, y: canvas.height / 2 + 40, w: 200, h: 50 };
+
+        const ship = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            angle: 0,
+            velX: 0,
+            velY: 0,
+            speed: 0.08,
+            friction: 0.98,
+            size: 20,
+            alive: true
+        };
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener("resize", resizeCanvas);
+
+        canvas.addEventListener("touchstart", handleTouchStart);
+
+        function handleTouchStart(e) {
+            if (!gameStarted && demoMode) {
+                resetGame();
+                return;
+            }
+            if (gameOver && countdownTimer > 0) {
+                const touch = e.touches[0];
+                const tx = touch.clientX, ty = touch.clientY;
+                if (tx >= playAgainRect.x && tx <= playAgainRect.x + playAgainRect.w &&
+                    ty >= playAgainRect.y && ty <= playAgainRect.y + playAgainRect.h) {
+                    resetGame();
+                }
+            } else if (!gameStarted) {
+                gameStarted = true;
+                loop();
+            }
+        }
+
+        function resetGame() {
+            bullets = [];
+            particles = [];
+            asteroids = [];
+            explosions = [];
+            lives = 3;
+            fadeAlpha = 0;
+            gameStarted = true;
+            gameOver = false;
+            demoMode = false;
+            countdownTimer = 600;
+            ship.x = canvas.width / 2;
+            ship.y = canvas.height / 2;
+            ship.velX = 0;
+            ship.velY = 0;
+            ship.alive = true;
+            createAsteroids();
+            loop();
+        }
+
+        // ... joystick + fire button logic unchanged (same as earlier file)
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (demoMode) {
+                ctx.fillStyle = "white";
+                ctx.font = "48px Arial";
+                ctx.fillText("TAP TO BEGIN", canvas.width / 2 - 140, canvas.height / 2);
+                return;
+            }
+
+            // draw particles, ship, asteroids, bullets, etc (same as before)...
+
+            if (gameOver) {
+                ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = "white";
+                ctx.font = "48px Arial";
+                ctx.fillText("GAME OVER", canvas.width / 2 - 140, canvas.height / 2 - 20);
+                ctx.font = "24px Arial";
+                ctx.fillText(`Auto-demo in ${Math.ceil(countdownTimer / 60)}...`, canvas.width / 2 - 90, canvas.height / 2 + 20);
+
+                // Draw Play Again button
+                ctx.fillStyle = "green";
+                ctx.fillRect(playAgainRect.x, playAgainRect.y, playAgainRect.w, playAgainRect.h);
+                ctx.fillStyle = "white";
+                ctx.font = "20px Arial";
+                ctx.fillText("Play Again", playAgainRect.x + 40, playAgainRect.y + 30);
+
+                if (fadeAlpha < 0.7) {
+                    fadeAlpha += 0.02;
+                }
+            }
+        }
+
+        function update() {
+            if (demoMode || !gameStarted) return;
+            if (gameOver) {
+                countdownTimer--;
+                if (countdownTimer <= 0) {
+                    demoMode = true;
+                    gameStarted = false;
+                }
+                return;
+            }
+
+            // normal update logic for ship, bullets, asteroids...
+        }
+
+        function loop() {
+            update();
+            draw();
+            if (gameStarted && !demoMode) requestAnimationFrame(loop);
+        }
+
+        createAsteroids(); // define this elsewhere
+        draw(); // show intro screen
+    };
+    </script>
+</body>
+</html>
