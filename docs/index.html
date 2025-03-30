@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Asteroids Mobile</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="docs/style.css">
     <style>
         body {
             margin: 0;
@@ -59,7 +59,7 @@
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas"></canvas>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
     <div class="controls">
         <div id="joystick-container">
             <div id="joystick"></div>
@@ -195,6 +195,26 @@
         createAsteroids(); // define this elsewhere
         draw(); // show intro screen
     };
-    </script>
+    // Ensure the DOM is fully loaded before initializing the game
+    document.addEventListener('DOMContentLoaded', function() {
+      const canvas = document.getElementById('gameCanvas');
+      if (!canvas) {
+        console.error('Canvas element not found!');
+        return;
+      }
+      
+      // Check if the game initialization function exists
+      if (typeof initGame === 'function') {
+        // Initialize the game with the canvas and the assets directory
+        initGame({
+          canvas: canvas,
+          assetsDir: 'assets/'
+        });
+      } else {
+        console.error('initGame function not found in asteroids.js');
+      }
+    });
+    </script>     
+<script src="docs/js/asteroids.js"></script>
 </body>
 </html>
