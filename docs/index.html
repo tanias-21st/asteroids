@@ -4,13 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Asteroids Mobile</title>
-    <link rel="stylesheet" href="docs/style.css">
     <style>
         body {
             margin: 0;
             overflow: hidden;
             background: black;
             touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         canvas {
             display: block;
@@ -36,6 +38,7 @@
             justify-content: center;
             align-items: center;
             pointer-events: all;
+            touch-action: none;
         }
         #joystick {
             width: 60px;
@@ -43,6 +46,7 @@
             background: rgba(255, 255, 255, 0.6);
             border-radius: 50%;
             position: relative;
+            touch-action: none;
         }
         #fireButton {
             position: absolute;
@@ -55,11 +59,12 @@
             color: white;
             border: none;
             pointer-events: all;
+            touch-action: manipulation;
         }
     </style>
 </head>
 <body>
-    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <canvas id="gameCanvas"></canvas>
     <div class="controls">
         <div id="joystick-container">
             <div id="joystick"></div>
@@ -68,153 +73,541 @@
     </div>
 
     <script>
-    window.onload = function() {
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
+    // Main game initialization
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const fireButton = document.getElementById("fireButton");
 
-        let bullets = [], particles = [], asteroids = [], explosions = [];
-        let lives = 3, fadeAlpha = 0;
-        let gameStarted = false, gameOver = false, demoMode = false;
-        let countdownTimer = 600; // 10 seconds
-        const playAgainRect = { x: canvas.width / 2 - 100, y: canvas.height / 2 + 40, w: 200, h: 50 };
+    // Game state variables
+    let bullets = [], particles = [], asteroids = [], explosions = [];
+    let lives = 3, fadeAlpha = 0, score = 0, level = 1;
+    let gameStarted = false, gameOver = false, demoMode = false;
+    let countdownTimer = 600; // 10 seconds
+    const playAgainRect = { x: canvas.width / 2 - 100, y: canvas.height / 2 + 40, w: 200, h: 50 };
+    let activePowerUp = null, powerUpTimer = 0;
+    const maxLevel = 5;
+    let joystickActive = false;
+    let joystickAngle = 0;
+    let joystickPower = 0;
+    let lastFireTime = 0;
+    const fireCooldown = 300; // ms between shots
 
-        const ship = {
-            x: canvas.width / 2,
-            y: canvas.height / 2,
-            angle: 0,
-            velX: 0,
-            velY: 0,
-            speed: 0.08,
-            friction: 0.98,
-            size: 20,
-            alive: true
-        };
+    const ship = {
+        x: canvas.width / 2,
+        y: canvas.height / 2,
+        angle: 0,
+        velX: 0,
+        velY: 0,
+        speed: 0.08,
+        friction: 0.98,
+        size: 20,
+        alive: true
+    };
 
-        function resizeCanvas() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
+    // Joystick variables
+    const joystick = {
+        baseX: 0,
+        baseY: 0,
+        stickX: 0,
+        stickY: 0,
+        radius: 60,
+        baseRadius: 60,
+        dragging: false,
+        touchId: null
+    };
+
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        // Update playAgainRect position when resizing
+        playAgainRect.x = canvas.width / 2 - 100;
+        playAgainRect.y = canvas.height / 2 + 40;
+        
+        // Position joystick base
+        const joystickContainer = document.getElementById('joystick-container');
+        joystick.baseX = joystickContainer.offsetLeft + joystickContainer.offsetWidth / 2;
+        joystick.baseY = joystickContainer.offsetTop + joystickContainer.offsetHeight / 2;
+    }
+
+    function createBoulderShape(size) {
+        const points = [];
+        const numPoints = 8 + Math.floor(Math.random() * 5);
+        for (let i = 0; i < numPoints; i++) {
+            const angle = (i / numPoints) * Math.PI * 2;
+            const radius = size/2 * (0.7 + Math.random() * 0.3);
+            points.push({
+                x: Math.cos(angle) * radius,
+                y: Math.sin(angle) * radius
+            });
         }
+        return points;
+    }
+
+    function createAsteroids(count = 3, x = null, y = null, size = 60) {
+        for (let i = 0; i < count; i++) {
+            asteroids.push({
+                x: x || Math.random() * canvas.width,
+                y: y || Math.random() * canvas.height,
+                speedX: (Math.random() - 0.5) * 2,
+                speedY: (Math.random() - 0.5) * 2,
+                size: size,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.05,
+                shape: createBoulderShape(size)
+            });
+        }
+    }
+
+    function createExplosion(x, y, size) {
+        for (let i = 0; i < size; i++) {
+            explosions.push({
+                x: x,
+                y: y,
+                velX: (Math.random() - 0.5) * 5,
+                velY: (Math.random() - 0.5) * 5,
+                size: Math.random() * 3 + 1,
+                life: 1.0
+            });
+        }
+    }
+
+    function spawnPowerUp(x, y) {
+        // 20% chance to spawn a power-up
+        if (Math.random() < 0.2) {
+            // Implementation would go here
+        }
+    }
+
+    function fireBullet() {
+        const now = Date.now();
+        if (now - lastFireTime < fireCooldown) return;
+        lastFireTime = now;
+        
+        bullets.push({
+            x: ship.x + Math.cos(ship.angle) * 20,
+            y: ship.y + Math.sin(ship.angle) * 20,
+            velX: Math.cos(ship.angle) * 7,
+            velY: Math.sin(ship.angle) * 7,
+            life: 100
+        });
+    }
+
+    function startLevel() {
+        createAsteroids(2 + level);
+    }
+
+    function resetGame() {
+        bullets = [];
+        particles = [];
+        asteroids = [];
+        explosions = [];
+        lives = 3;
+        score = 0;
+        level = 1;
+        fadeAlpha = 0;
+        gameStarted = true;
+        gameOver = false;
+        demoMode = false;
+        countdownTimer = 600;
+        ship.x = canvas.width / 2;
+        ship.y = canvas.height / 2;
+        ship.velX = 0;
+        ship.velY = 0;
+        ship.alive = true;
+        startLevel();
+        loop();
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        if (demoMode) {
+            ctx.fillStyle = "white";
+            ctx.font = "48px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("TAP TO BEGIN", canvas.width / 2, canvas.height / 2);
+            return;
+        }
+
+        // Draw particles
+        particles.forEach(p => {
+            ctx.fillStyle = `rgba(255, 255, 255, ${p.life})`;
+            ctx.fillRect(p.x, p.y, p.size, p.size);
+        });
+
+        // Draw explosions
+        explosions.forEach(e => {
+            ctx.fillStyle = `rgba(255, ${Math.floor(e.life * 100)}, 0, ${e.life})`;
+            ctx.fillRect(e.x, e.y, e.size, e.size);
+        });
+
+        // Draw asteroids
+        asteroids.forEach(a => {
+            ctx.save();
+            ctx.translate(a.x, a.y);
+            ctx.rotate(a.rotation);
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            // Draw boulder shape
+            ctx.moveTo(a.shape[0].x, a.shape[0].y);
+            for (let i = 1; i < a.shape.length; i++) {
+                ctx.lineTo(a.shape[i].x, a.shape[i].y);
+            }
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
+        });
+
+        // Draw ship if alive
+        if (ship.alive) {
+            ctx.save();
+            ctx.translate(ship.x, ship.y);
+            ctx.rotate(ship.angle);
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(15, 0);
+            ctx.lineTo(-10, -8);
+            ctx.lineTo(-10, 8);
+            ctx.closePath();
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // Draw bullets
+        bullets.forEach(b => {
+            ctx.fillStyle = "white";
+            ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
+        });
+
+        // Draw UI
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.textAlign = "left";
+        ctx.fillText(`Lives: ${lives}`, 20, 30);
+        ctx.fillText(`Score: ${score}`, 20, 60);
+        ctx.fillText(`Level: ${level}`, 20, 90);
+
+        if (gameOver) {
+            ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "white";
+            ctx.font = "48px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2 - 20);
+            ctx.font = "24px Arial";
+            ctx.fillText(`Auto-demo in ${Math.ceil(countdownTimer / 60)}...`, canvas.width / 2, canvas.height / 2 + 20);
+
+            // Draw Play Again button
+            ctx.fillStyle = "green";
+            ctx.fillRect(playAgainRect.x, playAgainRect.y, playAgainRect.w, playAgainRect.h);
+            ctx.fillStyle = "white";
+            ctx.font = "20px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("Play Again", playAgainRect.x + playAgainRect.w/2, playAgainRect.y + 30);
+
+            if (fadeAlpha < 0.7) {
+                fadeAlpha += 0.02;
+            }
+        }
+    }
+
+    function update() {
+        if (demoMode || !gameStarted) return;
+        if (gameOver) {
+            countdownTimer--;
+            if (countdownTimer <= 0) {
+                demoMode = true;
+                gameStarted = false;
+            }
+            return;
+        }
+
+        // Ship movement from joystick
+        if (joystickActive && ship.alive) {
+            const moveX = Math.cos(joystickAngle) * joystickPower * ship.speed;
+            const moveY = Math.sin(joystickAngle) * joystickPower * ship.speed;
+            
+            ship.velX += moveX;
+            ship.velY += moveY;
+            ship.angle = joystickAngle;
+        }
+
+        // Ship movement physics
+        if (ship.alive) {
+            ship.x += ship.velX;
+            ship.y += ship.velY;
+            ship.velX *= ship.friction;
+            ship.velY *= ship.friction;
+
+            // Screen wrapping
+            if (ship.x < 0) ship.x = canvas.width;
+            if (ship.x > canvas.width) ship.x = 0;
+            if (ship.y < 0) ship.y = canvas.height;
+            if (ship.y > canvas.height) ship.y = 0;
+
+            // Thruster particles
+            if (Math.abs(ship.velX) > 0.02 || Math.abs(ship.velY) > 0.02) {
+                particles.push({
+                    x: ship.x - Math.cos(ship.angle) * 15,
+                    y: ship.y - Math.sin(ship.angle) * 15,
+                    velX: (Math.random() - 0.5) * 0.5,
+                    velY: (Math.random() - 0.5) * 0.5,
+                    size: Math.random() * 3 + 1,
+                    life: 1.0
+                });
+            }
+        }
+
+        // Update particles
+        particles.forEach((p, i) => {
+            p.x += p.velX;
+            p.y += p.velY;
+            p.life -= 0.05;
+            if (p.life <= 0) particles.splice(i, 1);
+        });
+
+        // Update bullets
+        bullets.forEach((b, i) => {
+            b.x += b.velX;
+            b.y += b.velY;
+            b.life--;
+            if (b.life <= 0 || b.x < 0 || b.x > canvas.width || b.y < 0 || b.y > canvas.height) {
+                bullets.splice(i, 1);
+            }
+        });
+
+        // Update asteroids
+        asteroids.forEach((a, i) => {
+            a.x += a.speedX;
+            a.y += a.speedY;
+            a.rotation += a.rotationSpeed;
+            
+            // Screen wrapping
+            if (a.x < 0) a.x = canvas.width;
+            if (a.x > canvas.width) a.x = 0;
+            if (a.y < 0) a.y = canvas.height;
+            if (a.y > canvas.height) a.y = 0;
+
+            // Asteroid vs Ship collision
+            if (ship.alive) {
+                let dx = ship.x - a.x;
+                let dy = ship.y - a.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < a.size / 2 + ship.size / 2) {
+                    if (activePowerUp !== "shield") {
+                        createExplosion(ship.x, ship.y, 50);
+                        ship.alive = false;
+                        lives--;
+                        if (lives <= 0) {
+                            gameOver = true;
+                        } else {
+                            // Respawn ship
+                            setTimeout(() => {
+                                ship.x = canvas.width / 2;
+                                ship.y = canvas.height / 2;
+                                ship.velX = 0;
+                                ship.velY = 0;
+                                ship.alive = true;
+                            }, 1000);
+                        }
+                    }
+                }
+            }
+
+            // Asteroid vs Bullet collision
+            bullets.forEach((b, j) => {
+                let dx = b.x - a.x;
+                let dy = b.y - a.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < a.size / 2) {
+                    createExplosion(a.x, a.y, a.size);
+                    spawnPowerUp(a.x, a.y);
+                    bullets.splice(j, 1);
+                    asteroids.splice(i, 1);
+                    score += Math.floor(a.size);
+                    
+                    if (a.size > 30) {
+                        let newSize = a.size / 2;
+                        createAsteroids(2, a.x, a.y, newSize);
+                    }
+                }
+            });
+        });
+
+        // Update explosions
+        explosions.forEach((e, i) => {
+            e.x += e.velX;
+            e.y += e.velY;
+            e.life -= 0.05;
+            if (e.life <= 0) explosions.splice(i, 1);
+        });
+
+        // Power-up timer
+        if (powerUpTimer > 0) {
+            powerUpTimer--;
+            if (powerUpTimer <= 0) activePowerUp = null;
+        }
+
+        // Level progression
+        if (asteroids.length === 0 && !gameOver) {
+            if (level < maxLevel) {
+                level++;
+                startLevel();
+            } else {
+                // Win condition
+                gameOver = true;
+            }
+        }
+    }
+
+    function loop() {
+        update();
+        draw();
+        if (gameStarted && !demoMode) {
+            requestAnimationFrame(loop);
+        }
+    }
+
+    // Joystick implementation
+    function initJoystick() {
+        const joystickElement = document.getElementById('joystick');
+        const joystickContainer = document.getElementById('joystick-container');
+        
+        // Get initial position
+        const containerRect = joystickContainer.getBoundingClientRect();
+        joystick.baseX = containerRect.left + containerRect.width / 2;
+        joystick.baseY = containerRect.top + containerRect.height / 2;
+        joystick.radius = containerRect.width / 2;
+        
+        // Touch events
+        joystickElement.addEventListener('touchstart', handleJoystickStart);
+        document.addEventListener('touchmove', handleJoystickMove);
+        document.addEventListener('touchend', handleJoystickEnd);
+        
+        // Mouse events for desktop testing
+        joystickElement.addEventListener('mousedown', handleJoystickStart);
+        document.addEventListener('mousemove', handleJoystickMove);
+        document.addEventListener('mouseup', handleJoystickEnd);
+    }
+    
+    function handleJoystickStart(e) {
+        e.preventDefault();
+        joystickActive = true;
+        updateJoystickPosition(e);
+    }
+    
+    function handleJoystickMove(e) {
+        if (!joystickActive) return;
+        e.preventDefault();
+        updateJoystickPosition(e);
+    }
+    
+    function handleJoystickEnd(e) {
+        if (!joystickActive) return;
+        e.preventDefault();
+        joystickActive = false;
+        joystickPower = 0;
+        
+        // Reset joystick visual position
+        const joystickElement = document.getElementById('joystick');
+        joystickElement.style.transform = 'translate(0, 0)';
+    }
+    
+    function updateJoystickPosition(e) {
+        const joystickElement = document.getElementById('joystick');
+        let clientX, clientY;
+        
+        if (e.type.includes('touch')) {
+            const touch = e.touches[0] || e.changedTouches[0];
+            clientX = touch.clientX;
+            clientY = touch.clientY;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
+        // Calculate position relative to joystick base
+        const dx = clientX - joystick.baseX;
+        const dy = clientY - joystick.baseY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Limit to joystick radius
+        const angle = Math.atan2(dy, dx);
+        const limitedDistance = Math.min(distance, joystick.radius);
+        
+        // Update joystick visual position
+        const moveX = Math.cos(angle) * limitedDistance;
+        const moveY = Math.sin(angle) * limitedDistance;
+        joystickElement.style.transform = `translate(${moveX}px, ${moveY}px)`;
+        
+        // Update game variables
+        joystickAngle = angle;
+        joystickPower = limitedDistance / joystick.radius;
+    }
+
+    // Fire button implementation
+    function initFireButton() {
+        fireButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            fireBullet();
+        });
+        
+        fireButton.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            fireBullet();
+        });
+    }
+
+    // Initialize the game
+    window.addEventListener('load', () => {
         resizeCanvas();
-        window.addEventListener("resize", resizeCanvas);
-
-        canvas.addEventListener("touchstart", handleTouchStart);
-
-        function handleTouchStart(e) {
-            if (!gameStarted && demoMode) {
+        window.addEventListener('resize', resizeCanvas);
+        
+        initJoystick();
+        initFireButton();
+        
+        // Start with demo mode
+        demoMode = true;
+        draw();
+        
+        // Touch/click to start
+        canvas.addEventListener('click', (event) => {
+            if (demoMode || !gameStarted) {
+                resetGame();
+            } else if (gameOver) {
+                const rect = canvas.getBoundingClientRect();
+                const x = event.clientX - rect.left;
+                const y = event.clientY - rect.top;
+                
+                if (x >= playAgainRect.x && x <= playAgainRect.x + playAgainRect.w &&
+                    y >= playAgainRect.y && y <= playAgainRect.y + playAgainRect.h) {
+                    resetGame();
+                }
+            }
+        });
+        
+        // Touch support for mobile
+        canvas.addEventListener('touchend', (event) => {
+            if (demoMode || !gameStarted) {
                 resetGame();
                 return;
             }
-            if (gameOver && countdownTimer > 0) {
-                const touch = e.touches[0];
-                const tx = touch.clientX, ty = touch.clientY;
-                if (tx >= playAgainRect.x && tx <= playAgainRect.x + playAgainRect.w &&
-                    ty >= playAgainRect.y && ty <= playAgainRect.y + playAgainRect.h) {
+            if (gameOver) {
+                const touch = event.changedTouches[0];
+                const rect = canvas.getBoundingClientRect();
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                
+                if (x >= playAgainRect.x && x <= playAgainRect.x + playAgainRect.w &&
+                    y >= playAgainRect.y && y <= playAgainRect.y + playAgainRect.h) {
                     resetGame();
                 }
-            } else if (!gameStarted) {
-                gameStarted = true;
-                loop();
             }
-        }
-
-        function resetGame() {
-            bullets = [];
-            particles = [];
-            asteroids = [];
-            explosions = [];
-            lives = 3;
-            fadeAlpha = 0;
-            gameStarted = true;
-            gameOver = false;
-            demoMode = false;
-            countdownTimer = 600;
-            ship.x = canvas.width / 2;
-            ship.y = canvas.height / 2;
-            ship.velX = 0;
-            ship.velY = 0;
-            ship.alive = true;
-            createAsteroids();
-            loop();
-        }
-
-        // ... joystick + fire button logic unchanged (same as earlier file)
-
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (demoMode) {
-                ctx.fillStyle = "white";
-                ctx.font = "48px Arial";
-                ctx.fillText("TAP TO BEGIN", canvas.width / 2 - 140, canvas.height / 2);
-                return;
-            }
-
-            // draw particles, ship, asteroids, bullets, etc (same as before)...
-
-            if (gameOver) {
-                ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = "white";
-                ctx.font = "48px Arial";
-                ctx.fillText("GAME OVER", canvas.width / 2 - 140, canvas.height / 2 - 20);
-                ctx.font = "24px Arial";
-                ctx.fillText(`Auto-demo in ${Math.ceil(countdownTimer / 60)}...`, canvas.width / 2 - 90, canvas.height / 2 + 20);
-
-                // Draw Play Again button
-                ctx.fillStyle = "green";
-                ctx.fillRect(playAgainRect.x, playAgainRect.y, playAgainRect.w, playAgainRect.h);
-                ctx.fillStyle = "white";
-                ctx.font = "20px Arial";
-                ctx.fillText("Play Again", playAgainRect.x + 40, playAgainRect.y + 30);
-
-                if (fadeAlpha < 0.7) {
-                    fadeAlpha += 0.02;
-                }
-            }
-        }
-
-        function update() {
-            if (demoMode || !gameStarted) return;
-            if (gameOver) {
-                countdownTimer--;
-                if (countdownTimer <= 0) {
-                    demoMode = true;
-                    gameStarted = false;
-                }
-                return;
-            }
-
-            // normal update logic for ship, bullets, asteroids...
-        }
-
-        function loop() {
-            update();
-            draw();
-            if (gameStarted && !demoMode) requestAnimationFrame(loop);
-        }
-
-        createAsteroids(); // define this elsewhere
-        draw(); // show intro screen
-    };
-    // Ensure the DOM is fully loaded before initializing the game
-    document.addEventListener('DOMContentLoaded', function() {
-      const canvas = document.getElementById('gameCanvas');
-      if (!canvas) {
-        console.error('Canvas element not found!');
-        return;
-      }
-      
-      // Check if the game initialization function exists
-      if (typeof initGame === 'function') {
-        // Initialize the game with the canvas and the assets directory
-        initGame({
-          canvas: canvas,
-          assetsDir: 'assets/'
         });
-      } else {
-        console.error('initGame function not found in asteroids.js');
-      }
     });
-    </script>     
-<script src="docs/js/asteroids.js"></script>
+    </script>
 </body>
 </html>
