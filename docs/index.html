@@ -97,7 +97,17 @@
     const maxLevel = 5;
     let lastBulletTime = 0;
     const bulletCooldown = 50; // ms between shots (faster response)
-
+    let bullets = [], particles = [], asteroids = [], explosions = [], powerUps = [];
+    let lives = 3, fadeAlpha = 0, score = 0, level = 1;
+    let gameStarted = false, gameOver = false, demoMode = false;
+    let countdownTimer = 600;
+    const playAgainRect = { x: canvas.width / 2 - 100, y: canvas.height / 2 + 40, w: 200, h: 50 };
+    let activePowerUp = null, powerUpTimer = 0;
+    const maxLevel = 5;
+    let lastBulletTime = 0;
+    const bulletCooldown = 50;
+    let extraLifeSpawnedThisLevel = false; // <-- ADD THIS LINE
+        
     // Joystick variables (UNRESTRICTED)
     let joystickActive = false;
     let joystickAngle = 0;
@@ -117,12 +127,11 @@
         alive: true
     };
 
-    // Power-up types
     const POWERUP_TYPES = {
-        RAPID_FIRE: { color: 'cyan', duration: 10000 },
-        SHIELD: { color: 'gold', duration: 8000 },
-        EXTRA_LIFE: { color: 'lime', duration: 0 }
-    };
+    RAPID_FIRE: { symbol: '🔫', duration: 8000 },
+    SHIELD: { symbol: '🛡️', duration: 8000 },
+    EXTRA_LIFE: { symbol: '❤️', duration: 0 }
+};
 
     function resizeCanvas() {
         canvas.width = window.innerWidth;
@@ -146,18 +155,20 @@
     }
 
     function createAsteroids(count = 3, x = null, y = null, size = 60) {
-        for (let i = 0; i < count; i++) {
-            asteroids.push({
-                x: x || Math.random() * canvas.width,
-                y: y || Math.random() * canvas.height,
-                speedX: (Math.random() - 0.5) * 2,
-                speedY: (Math.random() - 0.5) * 2,
-                size: size,
-                rotation: Math.random() * Math.PI * 2,
-                rotationSpeed: (Math.random() - 0.5) * 0.05,
-                shape: createBoulderShape(size)
-            });
-        }
+    for (let i = 0; i < count; i++) {
+        asteroids.push({
+            x: x || Math.random() * canvas.width,
+            y: y || Math.random() * canvas.height,
+            speedX: (Math.random() - 0.5) * 2,
+            speedY: (Math.random() - 0.5) * 2,
+            size: size,
+            hitsRequired: level,
+            hitsTaken: 0,
+            rotation: Math.random() * Math.PI * 2,
+            rotationSpeed: (Math.random() - 0.5) * 0.05,
+            shape: createBoulderShape(size)
+        });
+    }
     }
 
     function createExplosion(x, y, size) {
@@ -174,18 +185,29 @@
     }
 
     function spawnPowerUp(x, y) {
-        if (Math.random() < 0.3) { // 30% chance
-            const types = Object.keys(POWERUP_TYPES);
-            const type = types[Math.floor(Math.random() * types.length)];
-            
-            powerUps.push({
-                x: x,
-                y: y,
-                type: type,
-                size: 15,
-                life: 500 // 5 seconds to collect
-            });
+    // Only 10% chance and not if we've already spawned extra life this level
+    if (Math.random() < 0.1) {
+        let availableTypes = ['RAPID_FIRE', 'SHIELD'];
+        
+        // Only allow extra life if not spawned this level and lives < 3
+        if (!extraLifeSpawnedThisLevel && lives < 3) {
+            availableTypes.push('EXTRA_LIFE');
         }
+        
+        const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+        
+        if (type === 'EXTRA_LIFE') {
+            extraLifeSpawnedThisLevel = true;
+        }
+        
+        powerUps.push({
+            x: x,
+            y: y,
+            type: type,
+            size: 25,
+            life: 500
+        });
+    }
     }
 
     function activatePowerUp(type) {
@@ -198,23 +220,40 @@
     }
 
     function fireBullet() {
-        const now = Date.now();
-        if (now - lastBulletTime < bulletCooldown) return;
-        lastBulletTime = now;
+    const now = Date.now();
+    if (now - lastBulletTime < bulletCooldown) return;
+    lastBulletTime = now;
 
-        const bulletSpeed = activePowerUp === 'RAPID_FIRE' ? 15 : 10;
-        
+    const bulletSpeed = 10;
+    const spreadAngle = activePowerUp === 'RAPID_FIRE' ? 0.2 : 0;
+    
+    if (activePowerUp === 'RAPID_FIRE') {
+        // Fire 3 bullets with spread
+        for (let i = -1; i <= 1; i++) {
+            bullets.push({
+                x: ship.x + Math.cos(ship.angle) * 20,
+                y: ship.y + Math.sin(ship.angle) * 20,
+                velX: Math.cos(ship.angle + i * spreadAngle) * bulletSpeed,
+                velY: Math.sin(ship.angle + i * spreadAngle) * bulletSpeed,
+                life: 40
+            });
+        }
+    } else {
+        // Single bullet
         bullets.push({
             x: ship.x + Math.cos(ship.angle) * 20,
             y: ship.y + Math.sin(ship.angle) * 20,
             velX: Math.cos(ship.angle) * bulletSpeed,
             velY: Math.sin(ship.angle) * bulletSpeed,
-            life: activePowerUp === 'RAPID_FIRE' ? 40 : 60
+            life: 60
         });
+    }
     }
 
     function startLevel() {
-        createAsteroids(2 + level);
+    extraLifeSpawnedThisLevel = false;
+    createAsteroids(2 + level);
+    
     }
 
     function resetGame() {
@@ -264,13 +303,13 @@
             ctx.fillRect(e.x, e.y, e.size, e.size);
         });
 
-        // Draw power-ups
         powerUps.forEach(p => {
-            ctx.fillStyle = POWERUP_TYPES[p.type].color;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-            ctx.fill();
-        });
+    ctx.font = `${p.size}px Arial`;
+    ctx.fillStyle = "white";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(POWERUP_TYPES[p.type].symbol, p.x, p.y);
+});
 
         // Draw asteroids
         asteroids.forEach(a => {
@@ -314,11 +353,27 @@
             ctx.restore();
         }
 
-        // Draw bullets
-        bullets.forEach(b => {
-            ctx.fillStyle = activePowerUp === 'RAPID_FIRE' ? 'cyan' : 'white';
-            ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
-        });
+        bullets.forEach((b, j) => {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < a.size / 2) {
+        a.hitsTaken++;
+        bullets.splice(j, 1);
+        
+        if (a.hitsTaken >= a.hitsRequired) {
+            createExplosion(a.x, a.y, a.size);
+            spawnPowerUp(a.x, a.y);
+            asteroids.splice(i, 1);
+            score += Math.floor(a.size);
+            
+            if (a.size > 30) {
+                let newSize = a.size / 2;
+                createAsteroids(2, a.x, a.y, newSize);
+            }
+        }
+    }
+});
 
         // Draw UI
         ctx.fillStyle = "white";
