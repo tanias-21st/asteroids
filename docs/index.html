@@ -19,34 +19,29 @@
         }
         .controls {
             position: fixed;
-            bottom: 10px;
+            bottom: 0;
             width: 100%;
+            height: 50%;
             display: flex;
-            justify-content: space-between;
-            align-items: center;
             pointer-events: none;
         }
-        #joystick-container {
+        #joystick-zone {
             position: absolute;
-            left: 20px;
-            bottom: 20px;
-            width: 120px;
-            height: 120px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            left: 0;
+            bottom: 0;
+            width: 50%;
+            height: 100%;
             pointer-events: all;
             touch-action: none;
         }
-        #joystick {
-            width: 60px;
-            height: 60px;
-            background: rgba(255, 255, 255, 0.6);
+        #joystick-visual {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background: rgba(255, 255, 255, 0.3);
             border-radius: 50%;
-            position: relative;
-            touch-action: none;
+            transform: translate(-50%, -50%);
+            display: none;
         }
         #fireButton {
             position: absolute;
@@ -66,9 +61,8 @@
 <body>
     <canvas id="gameCanvas"></canvas>
     <div class="controls">
-        <div id="joystick-container">
-            <div id="joystick"></div>
-        </div>
+        <div id="joystick-zone"></div>
+        <div id="joystick-visual"></div>
         <button id="fireButton">🔥</button>
     </div>
 
@@ -77,6 +71,7 @@
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
     const fireButton = document.getElementById("fireButton");
+    const joystickVisual = document.getElementById("joystick-visual");
 
     // Game state variables
     let bullets = [], particles = [], asteroids = [], explosions = [];
@@ -89,8 +84,8 @@
     let joystickActive = false;
     let joystickAngle = 0;
     let joystickPower = 0;
-    let lastFireTime = 0;
-    const fireCooldown = 300; // ms between shots
+    let joystickBaseX = 0, joystickBaseY = 0;
+    let joystickMaxRadius = 150;
 
     const ship = {
         x: canvas.width / 2,
@@ -98,22 +93,10 @@
         angle: 0,
         velX: 0,
         velY: 0,
-        speed: 0.08,
-        friction: 0.98,
+        speed: 0.1,  // Increased speed for better responsiveness
+        friction: 0.96,  // Less friction for smoother movement
         size: 20,
         alive: true
-    };
-
-    // Joystick variables
-    const joystick = {
-        baseX: 0,
-        baseY: 0,
-        stickX: 0,
-        stickY: 0,
-        radius: 60,
-        baseRadius: 60,
-        dragging: false,
-        touchId: null
     };
 
     function resizeCanvas() {
@@ -123,10 +106,8 @@
         playAgainRect.x = canvas.width / 2 - 100;
         playAgainRect.y = canvas.height / 2 + 40;
         
-        // Position joystick base
-        const joystickContainer = document.getElementById('joystick-container');
-        joystick.baseX = joystickContainer.offsetLeft + joystickContainer.offsetWidth / 2;
-        joystick.baseY = joystickContainer.offsetTop + joystickContainer.offsetHeight / 2;
+        // Set joystick max radius based on screen size
+        joystickMaxRadius = Math.min(canvas.width / 4, 200);
     }
 
     function createBoulderShape(size) {
@@ -179,16 +160,12 @@
     }
 
     function fireBullet() {
-        const now = Date.now();
-        if (now - lastFireTime < fireCooldown) return;
-        lastFireTime = now;
-        
         bullets.push({
             x: ship.x + Math.cos(ship.angle) * 20,
             y: ship.y + Math.sin(ship.angle) * 20,
-            velX: Math.cos(ship.angle) * 7,
-            velY: Math.sin(ship.angle) * 7,
-            life: 100
+            velX: Math.cos(ship.angle) * 10,  // Faster bullets
+            velY: Math.sin(ship.angle) * 10,
+            life: 60  // Shorter lifespan for performance
         });
     }
 
@@ -471,24 +448,16 @@
         }
     }
 
-    // Joystick implementation
+    // Improved Joystick implementation
     function initJoystick() {
-        const joystickElement = document.getElementById('joystick');
-        const joystickContainer = document.getElementById('joystick-container');
+        const joystickZone = document.getElementById('joystick-zone');
         
-        // Get initial position
-        const containerRect = joystickContainer.getBoundingClientRect();
-        joystick.baseX = containerRect.left + containerRect.width / 2;
-        joystick.baseY = containerRect.top + containerRect.height / 2;
-        joystick.radius = containerRect.width / 2;
-        
-        // Touch events
-        joystickElement.addEventListener('touchstart', handleJoystickStart);
-        document.addEventListener('touchmove', handleJoystickMove);
-        document.addEventListener('touchend', handleJoystickEnd);
+        joystickZone.addEventListener('touchstart', handleJoystickStart, { passive: false });
+        document.addEventListener('touchmove', handleJoystickMove, { passive: false });
+        document.addEventListener('touchend', handleJoystickEnd, { passive: false });
         
         // Mouse events for desktop testing
-        joystickElement.addEventListener('mousedown', handleJoystickStart);
+        joystickZone.addEventListener('mousedown', handleJoystickStart);
         document.addEventListener('mousemove', handleJoystickMove);
         document.addEventListener('mouseup', handleJoystickEnd);
     }
@@ -496,6 +465,17 @@
     function handleJoystickStart(e) {
         e.preventDefault();
         joystickActive = true;
+        
+        // Get the initial touch position
+        const touch = e.type.includes('touch') ? e.touches[0] : e;
+        joystickBaseX = touch.clientX;
+        joystickBaseY = touch.clientY;
+        
+        // Show the joystick visual
+        joystickVisual.style.display = 'block';
+        joystickVisual.style.left = `${joystickBaseX}px`;
+        joystickVisual.style.top = `${joystickBaseY}px`;
+        
         updateJoystickPosition(e);
     }
     
@@ -511,13 +491,11 @@
         joystickActive = false;
         joystickPower = 0;
         
-        // Reset joystick visual position
-        const joystickElement = document.getElementById('joystick');
-        joystickElement.style.transform = 'translate(0, 0)';
+        // Hide the joystick visual
+        joystickVisual.style.display = 'none';
     }
     
     function updateJoystickPosition(e) {
-        const joystickElement = document.getElementById('joystick');
         let clientX, clientY;
         
         if (e.type.includes('touch')) {
@@ -530,34 +508,67 @@
         }
         
         // Calculate position relative to joystick base
-        const dx = clientX - joystick.baseX;
-        const dy = clientY - joystick.baseY;
+        const dx = clientX - joystickBaseX;
+        const dy = clientY - joystickBaseY;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Limit to joystick radius
-        const angle = Math.atan2(dy, dx);
-        const limitedDistance = Math.min(distance, joystick.radius);
+        // Calculate angle and power
+        joystickAngle = Math.atan2(dy, dx);
+        joystickPower = Math.min(distance / joystickMaxRadius, 1);
         
-        // Update joystick visual position
-        const moveX = Math.cos(angle) * limitedDistance;
-        const moveY = Math.sin(angle) * limitedDistance;
-        joystickElement.style.transform = `translate(${moveX}px, ${moveY}px)`;
+        // Update joystick visual position (limited to max radius)
+        const limitedDistance = Math.min(distance, joystickMaxRadius);
+        const moveX = Math.cos(joystickAngle) * limitedDistance;
+        const moveY = Math.sin(joystickAngle) * limitedDistance;
         
-        // Update game variables
-        joystickAngle = angle;
-        joystickPower = limitedDistance / joystick.radius;
+        joystickVisual.style.transform = `translate(calc(-50% + ${moveX}px), calc(-50% + ${moveY}px)`;
     }
 
-    // Fire button implementation
+    // Fire button implementation with rapid fire
     function initFireButton() {
+        let isFiring = false;
+        let fireInterval;
+        
+        const startFiring = () => {
+            if (!isFiring) {
+                isFiring = true;
+                fireBullet(); // Fire immediately
+                fireInterval = setInterval(fireBullet, 100); // Then every 100ms
+            }
+        };
+        
+        const stopFiring = () => {
+            if (isFiring) {
+                isFiring = false;
+                clearInterval(fireInterval);
+            }
+        };
+        
+        // Touch events
         fireButton.addEventListener('touchstart', (e) => {
             e.preventDefault();
-            fireBullet();
+            startFiring();
         });
         
+        fireButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            stopFiring();
+        });
+        
+        // Mouse events
         fireButton.addEventListener('mousedown', (e) => {
             e.preventDefault();
-            fireBullet();
+            startFiring();
+        });
+        
+        fireButton.addEventListener('mouseup', (e) => {
+            e.preventDefault();
+            stopFiring();
+        });
+        
+        fireButton.addEventListener('mouseleave', (e) => {
+            e.preventDefault();
+            stopFiring();
         });
     }
 
