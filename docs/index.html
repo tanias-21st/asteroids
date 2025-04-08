@@ -82,12 +82,12 @@
     let activePowerUp = null, powerUpTimer = 0;
     const maxLevel = 5;
     // Joystick variables (UNRESTRICTED)
+    // Joystick variables (UNRESTRICTED)
     let joystickActive = false;
     let joystickAngle = 0;
     let joystickPower = 0;
     let joystickStartX = 0, joystickStartY = 0; // Touch start position
     let joystickCurrentX = 0, joystickCurrentY = 0; // Current finger position
-
     const ship = {
         x: canvas.width / 2,
         y: canvas.height / 2,
@@ -448,82 +448,81 @@
             requestAnimationFrame(loop);
         }
     }
+// --- UNRESTRICTED JOYSTICK (ALWAYS VISIBLE, NO LIMITS) ---
+function initJoystick() {
+    const joystickZone = document.getElementById('joystick-zone');
 
-    // Improved Joystick implementation
-    function initJoystick() {
-        const joystickZone = document.getElementById('joystick-zone');
-        
-        joystickZone.addEventListener('touchstart', handleJoystickStart, { passive: false });
-        document.addEventListener('touchmove', handleJoystickMove, { passive: false });
-        document.addEventListener('touchend', handleJoystickEnd, { passive: false });
-        
-        // Mouse events for desktop testing
-        joystickZone.addEventListener('mousedown', handleJoystickStart);
-        document.addEventListener('mousemove', handleJoystickMove);
-        document.addEventListener('mouseup', handleJoystickEnd);
-    }
-    
-    function handleJoystickStart(e) {
+    // Touch Start
+    joystickZone.addEventListener('touchstart', (e) => {
         e.preventDefault();
+        const touch = e.touches[0];
+        joystickStartX = touch.clientX;
+        joystickStartY = touch.clientY;
+        joystickCurrentX = joystickStartX;
+        joystickCurrentY = joystickStartY;
         joystickActive = true;
-        
-        // Get the initial touch position
-        const touch = e.type.includes('touch') ? e.touches[0] : e;
-        joystickBaseX = touch.clientX;
-        joystickBaseY = touch.clientY;
-        
-        // Show the joystick visual
         joystickVisual.style.display = 'block';
-        joystickVisual.style.left = `${joystickBaseX}px`;
-        joystickVisual.style.top = `${joystickBaseY}px`;
-        
-        updateJoystickPosition(e);
-    }
-    
-    function handleJoystickMove(e) {
+        joystickVisual.style.left = `${joystickStartX}px`;
+        joystickVisual.style.top = `${joystickStartY}px`;
+    });
+
+    // Touch Move
+    document.addEventListener('touchmove', (e) => {
         if (!joystickActive) return;
         e.preventDefault();
-        updateJoystickPosition(e);
-    }
-    
-    function handleJoystickEnd(e) {
-        if (!joystickActive) return;
-        e.preventDefault();
+        const touch = e.touches[0];
+        joystickCurrentX = touch.clientX;
+        joystickCurrentY = touch.clientY;
+        updateJoystick();
+    });
+
+    // Touch End
+    document.addEventListener('touchend', () => {
         joystickActive = false;
-        joystickPower = 0;
-        
-        // Hide the joystick visual
         joystickVisual.style.display = 'none';
-    }
+    });
+
+    // Mouse Support (for testing)
+    joystickZone.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        joystickStartX = e.clientX;
+        joystickStartY = e.clientY;
+        joystickCurrentX = joystickStartX;
+        joystickCurrentY = joystickStartY;
+        joystickActive = true;
+        joystickVisual.style.display = 'block';
+        joystickVisual.style.left = `${joystickStartX}px`;
+        joystickVisual.style.top = `${joystickStartY}px`;
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!joystickActive) return;
+        e.preventDefault();
+        joystickCurrentX = e.clientX;
+        joystickCurrentY = e.clientY;
+        updateJoystick();
+    });
+
+    document.addEventListener('mouseup', () => {
+        joystickActive = false;
+        joystickVisual.style.display = 'none';
+    });
+}
+
+function updateJoystick() {
+    // Calculate movement from start position (NO RADIUS LIMIT!)
+    const dx = joystickCurrentX - joystickStartX;
+    const dy = joystickCurrentY - joystickStartY;
     
-    function updateJoystickPosition(e) {
-        let clientX, clientY;
-        
-        if (e.type.includes('touch')) {
-            const touch = e.touches[0] || e.changedTouches[0];
-            clientX = touch.clientX;
-            clientY = touch.clientY;
-        } else {
-            clientX = e.clientX;
-            clientY = e.clientY;
-        }
-        
-        // Calculate position relative to joystick base
-        const dx = clientX - joystickBaseX;
-        const dy = clientY - joystickBaseY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        
-        // Calculate angle and power
-        joystickAngle = Math.atan2(dy, dx);
-        joystickPower = Math.min(distance / joystickMaxRadius, 1);
-        
-        // Update joystick visual position (limited to max radius)
-        const limitedDistance = Math.min(distance, joystickMaxRadius);
-        const moveX = Math.cos(joystickAngle) * limitedDistance;
-        const moveY = Math.sin(joystickAngle) * limitedDistance;
-        
-        joystickVisual.style.transform = `translate(calc(-50% + ${moveX}px), calc(-50% + ${moveY}px)`;
-    }
+    // Set angle/power (unrestricted)
+    joystickAngle = Math.atan2(dy, dx);
+    joystickPower = Math.min(Math.sqrt(dx * dx + dy * dy) / 50, 2); // Scale power smoothly
+    
+    // Update joystick visual (follows finger infinitely)
+    joystickVisual.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)`;
+}
+
+
 
     // Fire button implementation with rapid fire
     function initFireButton() {
