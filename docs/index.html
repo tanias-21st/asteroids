@@ -16,6 +16,8 @@
         }
         canvas {
             display: block;
+            background-image: url('https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=800&auto=format');
+            background-size: cover;
         }
         .controls {
             position: fixed;
@@ -56,6 +58,18 @@
             pointer-events: all;
             touch-action: manipulation;
         }
+        .power-up {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
     </style>
 </head>
 <body>
@@ -74,41 +88,47 @@
     const joystickVisual = document.getElementById("joystick-visual");
 
     // Game state variables
-    let bullets = [], particles = [], asteroids = [], explosions = [];
+    let bullets = [], particles = [], asteroids = [], explosions = [], powerUps = [];
     let lives = 3, fadeAlpha = 0, score = 0, level = 1;
     let gameStarted = false, gameOver = false, demoMode = false;
-    let countdownTimer = 600; // 10 seconds
+    let countdownTimer = 600;
     const playAgainRect = { x: canvas.width / 2 - 100, y: canvas.height / 2 + 40, w: 200, h: 50 };
     let activePowerUp = null, powerUpTimer = 0;
     const maxLevel = 5;
-    // Joystick variables (UNRESTRICTED)
+    let lastBulletTime = 0;
+    const bulletCooldown = 50; // ms between shots (faster response)
+
     // Joystick variables (UNRESTRICTED)
     let joystickActive = false;
     let joystickAngle = 0;
     let joystickPower = 0;
-    let joystickStartX = 0, joystickStartY = 0; // Touch start position
-    let joystickCurrentX = 0, joystickCurrentY = 0; // Current finger position
+    let joystickStartX = 0, joystickStartY = 0;
+    let joystickCurrentX = 0, joystickCurrentY = 0;
+
     const ship = {
         x: canvas.width / 2,
         y: canvas.height / 2,
         angle: 0,
         velX: 0,
         velY: 0,
-        speed: 0.1,  // Increased speed for better responsiveness
-        friction: 0.96,  // Less friction for smoother movement
+        speed: 0.15,  // Faster movement
+        friction: 0.97,  // Smoother drifting
         size: 20,
         alive: true
+    };
+
+    // Power-up types
+    const POWERUP_TYPES = {
+        RAPID_FIRE: { color: 'cyan', duration: 10000 },
+        SHIELD: { color: 'gold', duration: 8000 },
+        EXTRA_LIFE: { color: 'lime', duration: 0 }
     };
 
     function resizeCanvas() {
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
-        // Update playAgainRect position when resizing
         playAgainRect.x = canvas.width / 2 - 100;
         playAgainRect.y = canvas.height / 2 + 40;
-        
-        // Set joystick max radius based on screen size
-        joystickMaxRadius = Math.min(canvas.width / 4, 200);
     }
 
     function createBoulderShape(size) {
@@ -154,19 +174,42 @@
     }
 
     function spawnPowerUp(x, y) {
-        // 20% chance to spawn a power-up
-        if (Math.random() < 0.2) {
-            // Implementation would go here
+        if (Math.random() < 0.3) { // 30% chance
+            const types = Object.keys(POWERUP_TYPES);
+            const type = types[Math.floor(Math.random() * types.length)];
+            
+            powerUps.push({
+                x: x,
+                y: y,
+                type: type,
+                size: 15,
+                life: 500 // 5 seconds to collect
+            });
+        }
+    }
+
+    function activatePowerUp(type) {
+        activePowerUp = type;
+        powerUpTimer = POWERUP_TYPES[type].duration;
+        
+        if (type === 'EXTRA_LIFE') {
+            lives++;
         }
     }
 
     function fireBullet() {
+        const now = Date.now();
+        if (now - lastBulletTime < bulletCooldown) return;
+        lastBulletTime = now;
+
+        const bulletSpeed = activePowerUp === 'RAPID_FIRE' ? 15 : 10;
+        
         bullets.push({
             x: ship.x + Math.cos(ship.angle) * 20,
             y: ship.y + Math.sin(ship.angle) * 20,
-            velX: Math.cos(ship.angle) * 10,  // Faster bullets
-            velY: Math.sin(ship.angle) * 10,
-            life: 60  // Shorter lifespan for performance
+            velX: Math.cos(ship.angle) * bulletSpeed,
+            velY: Math.sin(ship.angle) * bulletSpeed,
+            life: activePowerUp === 'RAPID_FIRE' ? 40 : 60
         });
     }
 
@@ -179,6 +222,7 @@
         particles = [];
         asteroids = [];
         explosions = [];
+        powerUps = [];
         lives = 3;
         score = 0;
         level = 1;
@@ -192,6 +236,7 @@
         ship.velX = 0;
         ship.velY = 0;
         ship.alive = true;
+        activePowerUp = null;
         startLevel();
         loop();
     }
@@ -219,6 +264,14 @@
             ctx.fillRect(e.x, e.y, e.size, e.size);
         });
 
+        // Draw power-ups
+        powerUps.forEach(p => {
+            ctx.fillStyle = POWERUP_TYPES[p.type].color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+        });
+
         // Draw asteroids
         asteroids.forEach(a => {
             ctx.save();
@@ -227,8 +280,6 @@
             ctx.strokeStyle = "white";
             ctx.lineWidth = 2;
             ctx.beginPath();
-            
-            // Draw boulder shape
             ctx.moveTo(a.shape[0].x, a.shape[0].y);
             for (let i = 1; i < a.shape.length; i++) {
                 ctx.lineTo(a.shape[i].x, a.shape[i].y);
@@ -238,11 +289,20 @@
             ctx.restore();
         });
 
-        // Draw ship if alive
+        // Draw ship with shield if active
         if (ship.alive) {
             ctx.save();
             ctx.translate(ship.x, ship.y);
             ctx.rotate(ship.angle);
+            
+            if (activePowerUp === 'SHIELD') {
+                ctx.strokeStyle = 'gold';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(0, 0, ship.size + 10, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            
             ctx.strokeStyle = "white";
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -256,7 +316,7 @@
 
         // Draw bullets
         bullets.forEach(b => {
-            ctx.fillStyle = "white";
+            ctx.fillStyle = activePowerUp === 'RAPID_FIRE' ? 'cyan' : 'white';
             ctx.fillRect(b.x - 2, b.y - 2, 4, 4);
         });
 
@@ -267,6 +327,11 @@
         ctx.fillText(`Lives: ${lives}`, 20, 30);
         ctx.fillText(`Score: ${score}`, 20, 60);
         ctx.fillText(`Level: ${level}`, 20, 90);
+        
+        // Draw active power-up timer
+        if (activePowerUp && powerUpTimer > 0) {
+            ctx.fillText(`${activePowerUp}: ${(powerUpTimer/1000).toFixed(1)}s`, 20, 120);
+        }
 
         if (gameOver) {
             ctx.fillStyle = `rgba(0, 0, 0, ${fadeAlpha})`;
@@ -303,7 +368,7 @@
             return;
         }
 
-        // Ship movement from joystick
+        // Ship movement from joystick (UNRESTRICTED)
         if (joystickActive && ship.alive) {
             const moveX = Math.cos(joystickAngle) * joystickPower * ship.speed;
             const moveY = Math.sin(joystickAngle) * joystickPower * ship.speed;
@@ -375,14 +440,13 @@
                 let dy = ship.y - a.y;
                 let dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist < a.size / 2 + ship.size / 2) {
-                    if (activePowerUp !== "shield") {
+                    if (activePowerUp !== "SHIELD") {
                         createExplosion(ship.x, ship.y, 50);
                         ship.alive = false;
                         lives--;
                         if (lives <= 0) {
                             gameOver = true;
                         } else {
-                            // Respawn ship
                             setTimeout(() => {
                                 ship.x = canvas.width / 2;
                                 ship.y = canvas.height / 2;
@@ -415,210 +479,198 @@
             });
         });
 
+        // Update power-ups
+        powerUps.forEach((p, i) => {
+            p.life--;
+            if (p.life <= 0) {
+                powerUps.splice(i, 1);
+                return;
+            }
+            
+            // Check collision with ship
+            if (ship.alive) {
+                let dx = ship.x - p.x;
+                let dy = ship.y - p.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < p.size + ship.size / 2) {
+                    activatePowerUp(p.type);
+                    powerUps.splice(i, 1);
+                }
+            }
+        });
+
         // Update explosions
         explosions.forEach((e, i) => {
             e.x += e.velX;
             e.y += e.velY;
-            e.life -= 0.05;
+            e.life -= 0.03;
             if (e.life <= 0) explosions.splice(i, 1);
         });
 
-        // Power-up timer
-        if (powerUpTimer > 0) {
-            powerUpTimer--;
-            if (powerUpTimer <= 0) activePowerUp = null;
+        // Update active power-up timer
+        if (activePowerUp) {
+            powerUpTimer -= 16; // Assuming ~60fps
+            if (powerUpTimer <= 0) {
+                activePowerUp = null;
+            }
         }
 
-        // Level progression
+        // Check level completion
         if (asteroids.length === 0 && !gameOver) {
-            if (level < maxLevel) {
-                level++;
-                startLevel();
-            } else {
-                // Win condition
-                gameOver = true;
+            level++;
+            if (level > maxLevel) {
+                level = maxLevel;
+                // You win scenario could be added here
             }
+            startLevel();
         }
     }
 
     function loop() {
+        if (!gameStarted && !demoMode) return;
+        
         update();
         draw();
-        if (gameStarted && !demoMode) {
+        
+        if (!gameOver || demoMode) {
             requestAnimationFrame(loop);
         }
     }
-// --- UNRESTRICTED JOYSTICK (ALWAYS VISIBLE, NO LIMITS) ---
-function initJoystick() {
-    const joystickZone = document.getElementById('joystick-zone');
 
-    // Touch Start
+    // Event listeners
+    window.addEventListener('resize', () => {
+        resizeCanvas();
+    });
+
+    canvas.addEventListener('click', (e) => {
+        if (demoMode) {
+            resetGame();
+            return;
+        }
+        
+        if (gameOver) {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            if (x > playAgainRect.x && x < playAgainRect.x + playAgainRect.w &&
+                y > playAgainRect.y && y < playAgainRect.y + playAgainRect.h) {
+                resetGame();
+            }
+        }
+    });
+
+    fireButton.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (ship.alive) fireBullet();
+    });
+
+    fireButton.addEventListener('click', () => {
+        if (ship.alive) fireBullet();
+    });
+
+    // Joystick controls (UNRESTRICTED)
+    const joystickZone = document.getElementById('joystick-zone');
+    
     joystickZone.addEventListener('touchstart', (e) => {
         e.preventDefault();
         const touch = e.touches[0];
-        joystickStartX = touch.clientX;
-        joystickStartY = touch.clientY;
+        const rect = joystickZone.getBoundingClientRect();
+        
+        joystickStartX = touch.clientX - rect.left;
+        joystickStartY = touch.clientY - rect.top;
         joystickCurrentX = joystickStartX;
         joystickCurrentY = joystickStartY;
-        joystickActive = true;
+        
         joystickVisual.style.display = 'block';
         joystickVisual.style.left = `${joystickStartX}px`;
         joystickVisual.style.top = `${joystickStartY}px`;
+        joystickActive = true;
     });
 
-    // Touch Move
-    document.addEventListener('touchmove', (e) => {
-        if (!joystickActive) return;
+    joystickZone.addEventListener('touchmove', (e) => {
         e.preventDefault();
+        if (!joystickActive) return;
+        
         const touch = e.touches[0];
-        joystickCurrentX = touch.clientX;
-        joystickCurrentY = touch.clientY;
-        updateJoystick();
+        const rect = joystickZone.getBoundingClientRect();
+        
+        joystickCurrentX = touch.clientX - rect.left;
+        joystickCurrentY = touch.clientY - rect.top;
+        
+        const dx = joystickCurrentX - joystickStartX;
+        const dy = joystickCurrentY - joystickStartY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDist = 100;
+        
+        joystickAngle = Math.atan2(dy, dx);
+        joystickPower = Math.min(dist / maxDist, 1);
+        
+        // Update visual position (limited to maxDist)
+        const limitedDist = Math.min(dist, maxDist);
+        joystickVisual.style.left = `${joystickStartX + Math.cos(joystickAngle) * limitedDist}px`;
+        joystickVisual.style.top = `${joystickStartY + Math.sin(joystickAngle) * limitedDist}px`;
     });
 
-    // Touch End
-    document.addEventListener('touchend', () => {
+    joystickZone.addEventListener('touchend', (e) => {
+        e.preventDefault();
         joystickActive = false;
         joystickVisual.style.display = 'none';
     });
 
-    // Mouse Support (for testing)
-    joystickZone.addEventListener('mousedown', (e) => {
+    joystickZone.addEventListener('touchcancel', (e) => {
         e.preventDefault();
-        joystickStartX = e.clientX;
-        joystickStartY = e.clientY;
+        joystickActive = false;
+        joystickVisual.style.display = 'none';
+    });
+
+    // Mouse controls for desktop testing
+    joystickZone.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return; // Only left mouse button
+        
+        const rect = joystickZone.getBoundingClientRect();
+        joystickStartX = e.clientX - rect.left;
+        joystickStartY = e.clientY - rect.top;
         joystickCurrentX = joystickStartX;
         joystickCurrentY = joystickStartY;
-        joystickActive = true;
+        
         joystickVisual.style.display = 'block';
         joystickVisual.style.left = `${joystickStartX}px`;
         joystickVisual.style.top = `${joystickStartY}px`;
+        joystickActive = true;
     });
 
-    document.addEventListener('mousemove', (e) => {
+    window.addEventListener('mousemove', (e) => {
         if (!joystickActive) return;
-        e.preventDefault();
-        joystickCurrentX = e.clientX;
-        joystickCurrentY = e.clientY;
-        updateJoystick();
+        
+        const rect = joystickZone.getBoundingClientRect();
+        joystickCurrentX = e.clientX - rect.left;
+        joystickCurrentY = e.clientY - rect.top;
+        
+        const dx = joystickCurrentX - joystickStartX;
+        const dy = joystickCurrentY - joystickStartY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDist = 100;
+        
+        joystickAngle = Math.atan2(dy, dx);
+        joystickPower = Math.min(dist / maxDist, 1);
+        
+        // Update visual position (limited to maxDist)
+        const limitedDist = Math.min(dist, maxDist);
+        joystickVisual.style.left = `${joystickStartX + Math.cos(joystickAngle) * limitedDist}px`;
+        joystickVisual.style.top = `${joystickStartY + Math.sin(joystickAngle) * limitedDist}px`;
     });
 
-    document.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', (e) => {
+        if (e.button !== 0) return;
         joystickActive = false;
         joystickVisual.style.display = 'none';
     });
-}
-
-function updateJoystick() {
-    // Calculate movement from start position (NO RADIUS LIMIT!)
-    const dx = joystickCurrentX - joystickStartX;
-    const dy = joystickCurrentY - joystickStartY;
-    
-    // Set angle/power (unrestricted)
-    joystickAngle = Math.atan2(dy, dx);
-    joystickPower = Math.min(Math.sqrt(dx * dx + dy * dy) / 50, 2); // Scale power smoothly
-    
-    // Update joystick visual (follows finger infinitely)
-    joystickVisual.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)`;
-}
-
-
-
-    // Fire button implementation with rapid fire
-    function initFireButton() {
-        let isFiring = false;
-        let fireInterval;
-        
-        const startFiring = () => {
-            if (!isFiring) {
-                isFiring = true;
-                fireBullet(); // Fire immediately
-                fireInterval = setInterval(fireBullet, 100); // Then every 100ms
-            }
-        };
-        
-        const stopFiring = () => {
-            if (isFiring) {
-                isFiring = false;
-                clearInterval(fireInterval);
-            }
-        };
-        
-        // Touch events
-        fireButton.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            startFiring();
-        });
-        
-        fireButton.addEventListener('touchend', (e) => {
-            e.preventDefault();
-            stopFiring();
-        });
-        
-        // Mouse events
-        fireButton.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            startFiring();
-        });
-        
-        fireButton.addEventListener('mouseup', (e) => {
-            e.preventDefault();
-            stopFiring();
-        });
-        
-        fireButton.addEventListener('mouseleave', (e) => {
-            e.preventDefault();
-            stopFiring();
-        });
-    }
 
     // Initialize the game
-    window.addEventListener('load', () => {
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-        
-        initJoystick();
-        initFireButton();
-        
-        // Start with demo mode
-        demoMode = true;
-        draw();
-        
-        // Touch/click to start
-        canvas.addEventListener('click', (event) => {
-            if (demoMode || !gameStarted) {
-                resetGame();
-            } else if (gameOver) {
-                const rect = canvas.getBoundingClientRect();
-                const x = event.clientX - rect.left;
-                const y = event.clientY - rect.top;
-                
-                if (x >= playAgainRect.x && x <= playAgainRect.x + playAgainRect.w &&
-                    y >= playAgainRect.y && y <= playAgainRect.y + playAgainRect.h) {
-                    resetGame();
-                }
-            }
-        });
-        
-        // Touch support for mobile
-        canvas.addEventListener('touchend', (event) => {
-            if (demoMode || !gameStarted) {
-                resetGame();
-                return;
-            }
-            if (gameOver) {
-                const touch = event.changedTouches[0];
-                const rect = canvas.getBoundingClientRect();
-                const x = touch.clientX - rect.left;
-                const y = touch.clientY - rect.top;
-                
-                if (x >= playAgainRect.x && x <= playAgainRect.x + playAgainRect.w &&
-                    y >= playAgainRect.y && y <= playAgainRect.y + playAgainRect.h) {
-                    resetGame();
-                }
-            }
-        });
-    });
-    </script>
+    resizeCanvas();
+    demoMode = true;
+    draw();
+</script>
 </body>
 </html>
