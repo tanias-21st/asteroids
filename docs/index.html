@@ -81,11 +81,12 @@
     const playAgainRect = { x: canvas.width / 2 - 100, y: canvas.height / 2 + 40, w: 200, h: 50 };
     let activePowerUp = null, powerUpTimer = 0;
     const maxLevel = 5;
+    // Joystick variables (UNRESTRICTED)
     let joystickActive = false;
     let joystickAngle = 0;
     let joystickPower = 0;
-    let joystickBaseX = 0, joystickBaseY = 0;
-    let joystickMaxRadius = 150;
+    let joystickStartX = 0, joystickStartY = 0; // Touch start position
+    let joystickCurrentX = 0, joystickCurrentY = 0; // Current finger position
 
     const ship = {
         x: canvas.width / 2,
